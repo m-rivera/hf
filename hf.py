@@ -12,7 +12,7 @@ def HF_calc(print_level, N, R, zeta_1, zeta_2):
     # Calculate core Hamiltonian and 2 electron integrals
     S, H_core, V_twoe = intgrl(print_level, N, R, zeta_1, zeta_2, ZA, ZB)
     # Diagonalize the overlap matrix
-    X = diago(print_level,S)
+    X = diago(print_level, S)
     # Perform Self Consistent Field algorithm
     scf(print_level, N, R, zeta_1, zeta_2, ZA, ZB, S, H_core, V_twoe, X)
 
@@ -189,6 +189,7 @@ def intgrl(print_level, N, R, zeta_1, zeta_2, ZA, ZB):
 
         return S, H_core, V_twoe
 
+
 def S_overlap(a, b, r_ab2):
     """
     Calculate overlaps for un-normalized primitive Gaussians
@@ -292,16 +293,17 @@ def derf(arg):
 
     return out_val
 
-def diago(print_level,S_in):
+
+def diago(print_level, S_in):
     """
     This function diagonalizes the overlap matrix via Eq. 3.259-3.262
     Full discussion of canonical diagonalization at Eq. 3.169 onwards
 
     """
-    X_out = np.zeros((2,2))
-    X_out[0][0] = 1/np.sqrt(2*(1+S_in[0][1]))
+    X_out = np.zeros((2, 2))
+    X_out[0][0] = 1 / np.sqrt(2 * (1 + S_in[0][1]))
     X_out[1][0] = X_out[0][0]
-    X_out[0][1] = 1/np.sqrt(2*(1-S_in[0][1]))
+    X_out[0][1] = 1 / np.sqrt(2 * (1 - S_in[0][1]))
     X_out[1][1] = -X_out[0][1]
 
     if print_level != 0:
@@ -310,22 +312,23 @@ def diago(print_level,S_in):
         print()
     return X_out
 
+
 def scf(print_level, N, R, zeta_1, zeta_2, ZA, ZB, S, H_core, V_twoe, X):
     # The Fock matrix
-    F = np.zeros((2,2))
+    F = np.zeros((2, 2))
     # The two electron part of the Fock matrix so that F = H_core + G Eq. 3.154
-    G = np.zeros((2,2))
+    G = np.zeros((2, 2))
     # The expansion coefficients matrix Eq. 3.133 where C_ij is the coefficient
     # of the molecular orbital i for the basis function j
-    C = np.zeros((2,2))
+    C = np.zeros((2, 2))
     # The above matrix transformed via X to get the orthogonal Roothaan equation
     # with a transformed basis Eq. 3.173 and Fock matrix Eq. 3.177 for a
     # Roothaan equation Eq. 3.178
-    C_prime = np.zeros((2,2))
+    C_prime = np.zeros((2, 2))
     # Density matrix Eq. 3.145
-    P = np.zeros((2,2))
+    P = np.zeros((2, 2))
     # And the density matrix from the last loop
-    old_P = np.zeros((2,2))
+    old_P = np.zeros((2, 2))
     # Convergence criterion for the density matrix
     crit = 10e-4
     # Density matrix difference to be checked (start with a value above crit)
@@ -335,16 +338,16 @@ def scf(print_level, N, R, zeta_1, zeta_2, ZA, ZB, S, H_core, V_twoe, X):
     # iteration number
     it = 0
 
-    while delta>crit:
+    while delta > crit:
         it += 1
         # Our initial guess at the density matrix is the null matrix
         if print_level == 3:
-            print("Begin iteration "+str(it))
+            print("Begin iteration " + str(it))
             print("Density matrix P")
             print(P)
             print()
         # 2 electron part of the Fock matrix
-        G = formg(P,V_twoe)
+        G = formg(P, V_twoe)
         if print_level == 3:
             print("G, the 2 electron part of the Fock matrix")
             print(G)
@@ -352,36 +355,39 @@ def scf(print_level, N, R, zeta_1, zeta_2, ZA, ZB, S, H_core, V_twoe, X):
         # Fock matrix
         F = H_core + G
 
-        energy=0
+        energy = 0
         for i in range(2):
             for j in range(2):
-                energy += 0.5*P[i][j]*(H_core[i][j]+F[i][j])
+                energy += 0.5 * P[i][j] * (H_core[i][j] + F[i][j])
 
         if print_level == 3:
             print("Fock matrix F")
             print(F)
             print()
-            print("Electronic energy = "+str(energy)+"\n")
+            print("Electronic energy = " + str(energy) + "\n")
 
         # Transform the Fock matrix with X with Eq. 3.266 F_prime = X.T * F * X
         F_prime = X.T.dot(F.dot(X))
-        break
+
+        # Diagonalize the new Fock matrix
+
+        break  # For testing REMOVE AT THE END
+
+
 def formg(P, V_twoe):
     """
     Calculate the 2 electron part of the Fock matrix from Eq. 3.154
 
     """
-    G_out = np.zeros((2,2))
+    G_out = np.zeros((2, 2))
     for i in range(2):
         for j in range(2):
             for k in range(2):
                 for l in range(2):
-                    G_out[i][j] += P[k][l]*(V_twoe[i][j][k][l]-0.5*V_twoe[i][l][k][j])
+                    G_out[i][j] += P[k][l] * \
+                        (V_twoe[i][j][k][l] - 0.5 * V_twoe[i][l][k][j])
 
     return G_out
-
-
-
 
     # Start loop
 # STO-NG calc
