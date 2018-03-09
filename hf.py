@@ -100,7 +100,6 @@ def intgrl(print_level, N, R, zeta_1, zeta_2, ZA, ZB):
 
             # Now the matrix summing over nucleus A
             V_nucA[0][0] += V_nuclear(A1[i], A1[j], 0, 0, ZA) * D1[i] * D1[j]
-            print(V_nucA[0][0])
             V_nucA[0][1] += V_nuclear(A1[i], A2[j],
                                       R2, r_ap2, ZA) * D1[i] * D2[j]
             # NB: here the penultimate arbument is the distance between the
@@ -342,9 +341,11 @@ def scf(print_level, N, R, zeta_1, zeta_2, ZA, ZB, S, H_core, V_twoe, X):
         it += 1
         # Our initial guess at the density matrix is the null matrix
         if print_level == 3:
-            print("Begin iteration " + str(it))
+
             print("Density matrix P")
             print(P)
+            print()
+            print("Begin iteration " + str(it))
             print()
         # 2 electron part of the Fock matrix
         G = formg(P, V_twoe)
@@ -355,21 +356,35 @@ def scf(print_level, N, R, zeta_1, zeta_2, ZA, ZB, S, H_core, V_twoe, X):
         # Fock matrix
         F = H_core + G
 
-        energy = 0
+        hf_energy = 0
         for i in range(2):
             for j in range(2):
-                energy += 0.5 * P[i][j] * (H_core[i][j] + F[i][j])
+                hf_energy += 0.5 * P[i][j] * (H_core[i][j] + F[i][j])
 
         if print_level == 3:
             print("Fock matrix F")
             print(F)
             print()
-            print("Electronic energy = " + str(energy) + "\n")
+            print("Electronic energy = " + str(hf_energy) + "\n")
 
         # Transform the Fock matrix with X with Eq. 3.266 F_prime = X.T * F * X
         F_prime = X.T.dot(F.dot(X))
 
         # Diagonalize the new Fock matrix
+        E,C_prime = np.linalg.eig(F_prime)
+
+        # Transform C_prime into C from Eq. 3.174
+        C = X.T.dot(C_prime)
+
+        # Save old density matrix
+        old_P = P
+
+        # Make a new density matrix
+        for i in range(2):
+            for j in range(2):
+                for k in range(2):
+                    P[i][j] += 2 * C[i][k] * C[j][k]
+        print(P)
 
         break  # For testing REMOVE AT THE END
 
