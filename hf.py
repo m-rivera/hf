@@ -9,8 +9,12 @@ def HF_calc(print_level, N, R, zeta_1, zeta_2):
             str(N) + \
             "G with Zetas {:6.4f} and {:6.4f}\n".format(zeta_1, zeta_2)
         print(welcome_msg)
-
-    intgrl(print_level, N, R, zeta_1, zeta_2, ZA, ZB)
+    # Calculate core Hamiltonian and 2 electron integrals
+    S, H_core, V_twoe = intgrl(print_level, N, R, zeta_1, zeta_2, ZA, ZB)
+    # Diagonalize the overlap matrix
+    X = diago(print_level,S)
+    # Perform Self Consistent Field algorithm
+    scf(print_level, N, R, zeta_1, zeta_2, ZA, ZB, S, H_core, V_twoe, X)
 
     return
 
@@ -33,14 +37,14 @@ def intgrl(print_level, N, R, zeta_1, zeta_2, ZA, ZB):
 
     # We select the row N of the c_exp matrix subtracting 1 because Python
     # starts at 0
-    A1 = c_exp[N-1] * zeta_1**2
-    A2 = c_exp[N-1] * zeta_2**2
+    A1 = c_exp[N - 1] * zeta_1**2
+    A2 = c_exp[N - 1] * zeta_2**2
 
     # scale contraction coefficients such that a contracted Gaussian function
     # is a sum of exponent zeta is expressed by the sum over i of
     # D[i]*primitive Gaussian of exponent A[i]
-    D1 = c_coeff[N-1] * np.power((2 * A1 / np.pi), 0.75)
-    D2 = c_coeff[N-1] * np.power((2 * A2 / np.pi), 0.75)
+    D1 = c_coeff[N - 1] * np.power((2 * A1 / np.pi), 0.75)
+    D2 = c_coeff[N - 1] * np.power((2 * A2 / np.pi), 0.75)
 
     print("Primitive Gaussian exponents")
     print(A1)
@@ -54,6 +58,12 @@ def intgrl(print_level, N, R, zeta_1, zeta_2, ZA, ZB):
     # The core Hamiltonian is the kinetic energy T + the nuclear attraction V
     T = np.zeros((2, 2))
     V_nuc = np.zeros((2, 2))
+    # V_nuc will be = V_nucA + V_nucB
+    V_nucA = np.zeros((2, 2))
+    V_nucB = np.zeros((2, 2))
+
+    # here we will store the 2 electron integrals
+    V_twoe = np.zeros((2, 2, 2, 2))
     # double sum because we are going to do one-electron integrals. In this
     # case we are integrating a product of two contracted Gaussian functions
     # which are made up of N primitive Gaussians. So the product will be a sum
@@ -89,8 +99,8 @@ def intgrl(print_level, N, R, zeta_1, zeta_2, ZA, ZB):
             r_bp2 = (R - r_ap)**2
 
             # Now the matrix summing over nucleus A
-            V_nucA = np.zeros((2, 2))
             V_nucA[0][0] += V_nuclear(A1[i], A1[j], 0, 0, ZA) * D1[i] * D1[j]
+            print(V_nucA[0][0])
             V_nucA[0][1] += V_nuclear(A1[i], A2[j],
                                       R2, r_ap2, ZA) * D1[i] * D2[j]
             # NB: here the penultimate arbument is the distance between the
@@ -103,15 +113,14 @@ def intgrl(print_level, N, R, zeta_1, zeta_2, ZA, ZB):
             # distance is just the distance AB
 
             # Similarly for the sum over nucleus B:
-            V_nucB = np.zeros((2, 2))
             V_nucB[0][0] += V_nuclear(A1[i], A1[j], 0, R2, ZB) * D1[i] * D1[j]
             V_nucB[0][1] += V_nuclear(A1[i], A2[j],
                                       R2, r_bp2, ZB) * D1[i] * D2[j]
             V_nucB[1][0] = V_nucB[0][1]
             V_nucB[1][1] += V_nuclear(A2[i], A2[j], 0, 0, ZB) * D2[i] * D2[j]
 
-            V_nuc = V_nucA + V_nucB
-            H_core = T + V_nuc
+    V_nuc = V_nucA + V_nucB
+    H_core = T + V_nuc
 
     # Now for the 2 electron integrals
     for i in range(N):
@@ -119,36 +128,45 @@ def intgrl(print_level, N, R, zeta_1, zeta_2, ZA, ZB):
             for k in range(N):
                 for l in range(N):
                     # Again we need info on weighted centres
-                    r_ap=A2[i]*R/(A2[i]+A1[j])
-                    r_bp=R-r_ap
-                    r_aq=A2[k]*R/(A2[k]+A1[l])
-                    r_bq=R-r_aq
-                    r_pq=r_ap-r_aq
-                    r_ap2=r_ap**2
-                    r_bp2=r_bp**2
-                    r_aq2=r_aq**2
-                    r_bq2=r_bq**2
-                    r_pq2=r_pq**2
+                    r_ap = A2[i] * R / (A2[i] + A1[j])
+                    r_bp = R - r_ap
+                    r_aq = A2[k] * R / (A2[k] + A1[l])
+                    r_bq = R - r_aq
+                    r_pq = r_ap - r_aq
+                    r_ap2 = r_ap**2
+                    r_bp2 = r_bp**2
+                    r_aq2 = r_aq**2
+                    r_bq2 = r_bq**2
+                    r_pq2 = r_pq**2
 
                     # And now we make a 2-electron 2x2x2x2 tensor V_twoe_efgh=(ef|gh):
-                    V_twoe = np.zeros((2,2,2,2))
                     # But let's write down each element explicitly
-                    V_twoe[0][0][0][0] += two_e(A1[i],A1[j],A1[k],A1[l],0,0,0)*D1[i]*D1[j]*D1[k]*D1[l]
-                    V_twoe[1][0][0][0] += two_e(A2[i],A1[j],A1[k],A1[l],R2,0,r_ap2)*D2[i]*D1[j]*D1[k]*D1[l]
-                    V_twoe[1][0][1][0] += two_e(A2[i],A1[j],A2[k],A1[l],R2,R2,r_pq2)*D2[i]*D1[j]*D2[k]*D1[l]
-                    V_twoe[1][1][0][0] += two_e(A2[i],A2[j],A1[k],A1[l],0,0,R2)*D2[i]*D2[j]*D1[k]*D1[l]
-                    V_twoe[1][1][1][0] += two_e(A2[i],A2[j],A2[k],A1[l],0,R2,r_bq2)*D2[i]*D2[j]*D2[k]*D1[l]
-                    V_twoe[1][1][1][1] += two_e(A2[i],A2[j],A2[k],A2[l],0,0,0)*D2[i]*D2[j]*D2[k]*D2[l]
+                    V_twoe[0][0][0][
+                        0] += two_e(A1[i], A1[j], A1[k], A1[l], 0, 0, 0) * D1[i] * D1[j] * D1[k] * D1[l]
+                    V_twoe[1][0][0][
+                        0] += two_e(A2[i], A1[j], A1[k], A1[l], R2, 0, r_ap2) * D2[i] * D1[j] * D1[k] * D1[l]
+                    V_twoe[1][0][1][
+                        0] += two_e(A2[i], A1[j], A2[k], A1[l], R2, R2, r_pq2) * D2[i] * D1[j] * D2[k] * D1[l]
+                    V_twoe[1][1][0][
+                        0] += two_e(A2[i], A2[j], A1[k], A1[l], 0, 0, R2) * D2[i] * D2[j] * D1[k] * D1[l]
+                    V_twoe[1][1][1][
+                        0] += two_e(A2[i], A2[j], A2[k], A1[l], 0, R2, r_bq2) * D2[i] * D2[j] * D2[k] * D1[l]
+                    V_twoe[1][1][1][
+                        1] += two_e(A2[i], A2[j], A2[k], A2[l], 0, 0, 0) * D2[i] * D2[j] * D2[k] * D2[l]
 
-                    # permutation relations are explained in http://vergil.chemistry.gatech.edu/notes/permsymm/permsymm.pdf
-                    V_twoe[0][1][0][0] = V_twoe[0][0][1][0] = V_twoe[0][0][0][1] = V_twoe[1][0][0][0]
-                    V_twoe[0][1][1][0] = V_twoe[0][1][0][1] = V_twoe[1][0][0][1] = V_twoe[1][0][1][0]
+                    # permutation relations are explained in
+                    # http://vergil.chemistry.gatech.edu/notes/permsymm/permsymm.pdf
+                    V_twoe[0][1][0][0] = V_twoe[0][0][1][
+                        0] = V_twoe[0][0][0][1] = V_twoe[1][0][0][0]
+                    V_twoe[0][1][1][0] = V_twoe[0][1][0][
+                        1] = V_twoe[1][0][0][1] = V_twoe[1][0][1][0]
                     V_twoe[0][0][1][1] = V_twoe[1][1][0][0]
-                    V_twoe[0][1][1][1] = V_twoe[1][0][1][1] = V_twoe[1][1][0][1] = V_twoe[1][1][1][0]
+                    V_twoe[0][1][1][1] = V_twoe[1][0][1][
+                        1] = V_twoe[1][1][0][1] = V_twoe[1][1][1][0]
 
     if print_level != 0:
-        print("{:10}{:10}{:10}".format("R","ZETA1","ZETA2"))
-        print("{:<10}{:<10}{:<10}\n".format(R,zeta_1,zeta_2))
+        print("{:10}{:10}{:10}".format("R", "ZETA1", "ZETA2"))
+        print("{:<10}{:<10}{:<10}\n".format(R, zeta_1, zeta_2))
         print("Overlap matrix S")
         print(S)
         print()
@@ -165,9 +183,11 @@ def intgrl(print_level, N, R, zeta_1, zeta_2, ZA, ZB):
         print("Core Hamiltonian H_core = T + V_nuc")
         print(H_core)
         print()
-        # print("Two electron integral tensor")
-        # print(V_twoe)
-        # print()
+        print("Two electron integral tensor")
+        print(V_twoe)
+        print()
+
+        return S, H_core, V_twoe
 
 def S_overlap(a, b, r_ab2):
     """
@@ -217,7 +237,7 @@ def V_nuclear(a, b, r_ab2, r_cp2, z_c):
     """
     out_vnuc = 2 * np.pi / (a + b) * f_0((a + b) * r_cp2) * \
         np.exp(-a * b * r_ab2 / (a + b))
-    out_vnuc = -out_vnuc*z_c
+    out_vnuc = -out_vnuc * z_c
 
     return out_vnuc
 
@@ -245,22 +265,136 @@ def two_e(a, b, c, d, r_ab2, r_cd2, r_pq2):
 
     """
 
-    two_out = 2 * (np.pi**2.5) / ((a + b) * (c + d) * np.sqrt(a + b + c + d)) * f_0((a + b) * (c + d) * r_pq2 / (a + b + c + d)) * np.exp(-a * b * r_ab2 / (a + b) - c * d * r_cd2 / (c + d))
+    two_out = 2 * (np.pi**2.5) / ((a + b) * (c + d) * np.sqrt(a + b + c + d)) * f_0((a + b) * (c + d)
+                                                                                    * r_pq2 / (a + b + c + d)) * np.exp(-a * b * r_ab2 / (a + b) - c * d * r_cd2 / (c + d))
 
     return two_out
 
-#def
+
+def derf(arg):
+    """
+    Compute error function from Handbook of Mathematical functions. This gives
+    the same results as math.erf
+
+    """
+
+    num = 0.3275911
+    params = [0.254829592, -0.284496736,
+              1.421413741, -1.453152027, 1.061405429]
+
+    t = 1 / (1 + num * arg)
+    tn = t
+    poly = params[0] * tn
+    for i in params[1:]:
+        tn *= t
+        poly += +i * tn
+    out_val = 1 - poly * np.exp(-arg**2)
+
+    return out_val
+
+def diago(print_level,S_in):
+    """
+    This function diagonalizes the overlap matrix via Eq. 3.259-3.262
+    Full discussion of canonical diagonalization at Eq. 3.169 onwards
+
+    """
+    X_out = np.zeros((2,2))
+    X_out[0][0] = 1/np.sqrt(2*(1+S_in[0][1]))
+    X_out[1][0] = X_out[0][0]
+    X_out[0][1] = 1/np.sqrt(2*(1-S_in[0][1]))
+    X_out[1][1] = -X_out[0][1]
+
+    if print_level != 0:
+        print("Diagonalizing matrix")
+        print(X_out)
+        print()
+    return X_out
+
+def scf(print_level, N, R, zeta_1, zeta_2, ZA, ZB, S, H_core, V_twoe, X):
+    # The Fock matrix
+    F = np.zeros((2,2))
+    # The two electron part of the Fock matrix so that F = H_core + G Eq. 3.154
+    G = np.zeros((2,2))
+    # The expansion coefficients matrix Eq. 3.133 where C_ij is the coefficient
+    # of the molecular orbital i for the basis function j
+    C = np.zeros((2,2))
+    # The above matrix transformed via X to get the orthogonal Roothaan equation
+    # with a transformed basis Eq. 3.173 and Fock matrix Eq. 3.177 for a
+    # Roothaan equation Eq. 3.178
+    C_prime = np.zeros((2,2))
+    # Density matrix Eq. 3.145
+    P = np.zeros((2,2))
+    # And the density matrix from the last loop
+    old_P = np.zeros((2,2))
+    # Convergence criterion for the density matrix
+    crit = 10e-4
+    # Density matrix difference to be checked (start with a value above crit)
+    delta = 1
+    # Maximum number of iterations
+    max_iter = 25
+    # iteration number
+    it = 0
+
+    while delta>crit:
+        it += 1
+        # Our initial guess at the density matrix is the null matrix
+        if print_level == 3:
+            print("Begin iteration "+str(it))
+            print("Density matrix P")
+            print(P)
+            print()
+        # 2 electron part of the Fock matrix
+        G = formg(P,V_twoe)
+        if print_level == 3:
+            print("G, the 2 electron part of the Fock matrix")
+            print(G)
+            print()
+        # Fock matrix
+        F = H_core + G
+
+        energy=0
+        for i in range(2):
+            for j in range(2):
+                energy += 0.5*P[i][j]*(H_core[i][j]+F[i][j])
+
+        if print_level == 3:
+            print("Fock matrix F")
+            print(F)
+            print()
+            print("Electronic energy = "+str(energy)+"\n")
+
+        # Transform the Fock matrix with X with Eq. 3.266 F_prime = X.T * F * X
+        F_prime = X.T.dot(F.dot(X))
+        break
+def formg(P, V_twoe):
+    """
+    Calculate the 2 electron part of the Fock matrix from Eq. 3.154
+
+    """
+    G_out = np.zeros((2,2))
+    for i in range(2):
+        for j in range(2):
+            for k in range(2):
+                for l in range(2):
+                    G_out[i][j] += P[k][l]*(V_twoe[i][j][k][l]-0.5*V_twoe[i][l][k][j])
+
+    return G_out
+
+
+
+
+    # Start loop
 # STO-NG calc
-N=3
+N = 3
 # interatomic distance
-R=1.4632
+R = 1.4632
 # exponent for He
-zeta_1=2.0925
+zeta_1 = 2.0925
 # exponent for H
-zeta_2=1.24
+zeta_2 = 1.24
 # atomic number of He
-ZA=2
+ZA = 2
 # atomic number of H
-ZB=1
+ZB = 1
 
 HF_calc(3, N, R, zeta_1, zeta_2)
